@@ -1,4 +1,4 @@
-# MW Butler Telegram Bot
+# Community Manager Butler Telegram Bot
 
 
 ## Features

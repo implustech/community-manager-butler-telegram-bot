@@ -1,0 +1,15 @@
+version: '3'
+services:
+  db:
+    image: redis:3.2
+  bot:
+    links:
+    - db
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    environment:
+      - REDIS_HOST=db
+      - REDIS_PORT=6379
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - NODE_ENV=${NODE_ENV}

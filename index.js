@@ -20,7 +20,8 @@ const session = new RedisSession({
     },
     session: {
         default: 'maybe'
-    }
+    },
+    getSessionKey: ctx => ctx.chat && ctx.chat.id
 })
 
 if (process.env.NODE_ENV !== 'production') {

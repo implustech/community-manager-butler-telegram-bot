@@ -73,7 +73,7 @@ const tellAdmins = (ctx, message) => {
 bot.on('message', ctx => {
     winston.debug('[incoming message]', ctx.from.username, '>', ctx.message.text)
     winston.debug('[incoming message]', '>>>>>>>>>>>>>>>>>>>>', ctx.message)
-    if (ctx.message.text.indexOf('/config') === 0) {
+    if (typeof ctx.message.text !== 'undefined' && ctx.message.text.indexOf('/config') === 0) {
         winston.debug('[config] command captured')
         return ctx.getChatAdministrators().then(admins => {
             if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) === -1) {
@@ -114,7 +114,7 @@ Type /start to get information about how to change these settings.`)
         }).catch(err => {
             winston.error(err)
         })
-    } else if (ctx.message.text.indexOf('/mute') === 0) {
+    } else if (typeof ctx.message.text !== 'undefined' && ctx.message.text.indexOf('/mute') === 0) {
         winston.debug(`[mute command] ${ctx.from.username} is setting the group ${ctx.chat.title} to mute`)
         return ctx.getChatAdministrators().then(admins => {
             if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) === 1) {
@@ -125,7 +125,7 @@ Type /start to get information about how to change these settings.`)
             tellAdmins(ctx, `${ctx.from.username} just muted the group ${ctx.chat.title}`)
             ctx.session.muted = true
         })
-    } else if (ctx.message.text.indexOf('/unmute') === 0) {
+    } else if (typeof ctx.message.text !== 'undefined' && ctx.message.text.indexOf('/unmute') === 0) {
         winston.debug(`[unmute command] ${ctx.from.username} is setting the group ${ctx.chat.title} to unmute`)
         return ctx.getChatAdministrators().then(admins => {
             if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) === 1) {

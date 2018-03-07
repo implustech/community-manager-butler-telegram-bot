@@ -65,16 +65,24 @@ const tellAdmins = (ctx, message) => {
     winston.debug('[tellAdmins]', message)
     ctx.getChatAdministrators().then(admins => {
         admins.filter(admin => admin.user.is_bot === false).forEach(admin => {
-            ctx.telegram.sendMessage(admin.user.id, message)
+            try {
+                ctx.telegram.sendMessage(admin.user.id, message)
+            } catch (ex) {
+                winston.warn('unable to send message to admin')
+            }
         })
     })
 }
 
 bot.on('message', ctx => {
-    winston.debug('[incoming message]', ctx.from.username, '>', ctx.message.text)
-    winston.debug('[incoming message]', '>>>>>>>>>>>>>>>>>>>>', ctx.message)
+    winston.debug(`[incoming.message] -------
+User: ${ctx.from.username || ctx.from.first_name}
+Chat: ${ctx.chat.title}
+Text: ${ctx.message.text}
+Raw: ${ctx.message}
+---------------------------------
+`)
     if (typeof ctx.message.text !== 'undefined' && ctx.message.text.indexOf('/config') === 0) {
-        winston.debug('[config] command captured')
         return ctx.getChatAdministrators().then(admins => {
             if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) === -1) {
                 winston.warn('regular user wants to config the bot')
@@ -92,15 +100,15 @@ bot.on('message', ctx => {
             }
             const command = parseCommand(ctx.message.text)
             winston.debug('[config] command is', command)
-            if (command.command === 'config-set-kick-after') {
+            if (command && command.command === 'config-set-kick-after') {
                 ctx.session.configBeforeKicked = command.argument
                 winston.debug(`[config] ${ctx.from.username} is setting configBeforeKicked to ${command.argument} in group ${ctx.chat.title}`)
                 tellAdmins(ctx, `Configuration for ${ctx.chat.title} has changed: users will be kicked after ${command.argument} violations.`)
-            } else if (command.command === 'config-set-ban-after') {
+            } else if (command && command.command === 'config-set-ban-after') {
                 winston.debug(`[config] ${ctx.from.username} is setting configBeforeBanned to ${command.argument} in group ${ctx.chat.title}`)
                 ctx.session.configBeforeBanned = command.argument
                 tellAdmins(ctx, `Configuration for ${ctx.chat.title} has changed: users will be banned after ${command.argument} violations.`)
-            } else if (command.command === 'config-get') {
+            } else if (command && command.command === 'config-get') {
                 ctx.telegram.sendMessage(ctx.from.id,
 `Here's the current configuration for group "${ctx.chat.title}":
 - Kick after ${ctx.session.configBeforeKicked} violations
@@ -170,10 +178,10 @@ Type /start to get information about how to change these settings.`)
         violation = 'GIFs'
     } else {
         // No violation detected
-        winston.debug(`[violations] no violations found for message: ${ctx.message.text}`)
+        winston.debug(`[violations] no violations found for message: ${ctx.message}`)
         return
     }
-    winston.debug(`[violations] found "${violation}" violation for: ${ctx.message.text}`)
+    winston.debug(`[violations] found "${violation}" violation for: ${ctx.message}`)
     ctx.getChatAdministrators().then(admins => {
         if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) !== -1) {
             return winston.debug('admins can post anything they want')

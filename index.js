@@ -126,7 +126,7 @@ Type /start to get information about how to change these settings.`)
     } else if (typeof ctx.message.text !== 'undefined' && ctx.message.text.indexOf('/mute') === 0) {
         winston.debug(`[mute command] ${ctx.from.username} is setting the group ${ctx.chat.title} to mute`)
         return ctx.getChatAdministrators().then(admins => {
-            if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) === 1) {
+            if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) === -1) {
                 winston.warn('regular user wants to mute the group')
                 return tellAdmins(ctx, `User ${ctx.from.username} (id ${ctx.from.id}), which is not an admin, just attempted to mute the group ${ctx.chat.title}`)
             }
@@ -137,7 +137,7 @@ Type /start to get information about how to change these settings.`)
     } else if (typeof ctx.message.text !== 'undefined' && ctx.message.text.indexOf('/unmute') === 0) {
         winston.debug(`[unmute command] ${ctx.from.username} is setting the group ${ctx.chat.title} to unmute`)
         return ctx.getChatAdministrators().then(admins => {
-            if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) === 1) {
+            if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) === -1) {
                 winston.warn('regular user wants to unmute the group')
                 return tellAdmins(ctx, `User ${ctx.from.username} (id ${ctx.from.id}), which is not an admin, just attempted to unmute the group ${ctx.chat.title}`)
             }

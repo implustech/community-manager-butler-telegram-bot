@@ -79,7 +79,8 @@ bot.on('message', ctx => {
 User: ${ctx.from.username || ctx.from.first_name}
 Chat: ${ctx.chat.title}
 Text: ${ctx.message.text}
-Raw: ${ctx.message}
+Muted: ${ctx.session.muted}
+Raw: ${JSON.stringify(ctx.message)}
 ---------------------------------
 `)
     if (typeof ctx.message.text !== 'undefined' && ctx.message.text.indexOf('/config') === 0) {
@@ -148,6 +149,7 @@ Type /start to get information about how to change these settings.`)
     if (ctx.session.muted === true) {
         winston.debug('[session.muted] session is muted')
         return ctx.getChatAdministrators().then(admins => {
+            winston.debug('[debug.admins]:', admins.map(admin => admin.user.id).join(','))
             if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) !== -1) {
                 // Mods are allowed to chat
                 winston.debug('[session.muted] admins are allowed to talk')
@@ -160,6 +162,8 @@ Type /start to get information about how to change these settings.`)
                 tellAdmins(ctx, `I tried to delete a message from the group ${ctx.chat.title}, but the operation failed with this error: ${err}`)
                 winston.error('unable to delete message from muted group')
             })
+        }).catch(ex => {
+            winston.warn('exception caught', ex)
         })
     }
 

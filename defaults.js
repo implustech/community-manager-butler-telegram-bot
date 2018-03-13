@@ -6,7 +6,7 @@ module.exports = {
         violations: {},
         configBeforeBanned: 5,
         configBeforeKicked: 2,
-        configKickForMinutes: 180,
+        configKickForMinutes: 60,
         whitelistedURLs: []
     }
 }

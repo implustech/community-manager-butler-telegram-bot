@@ -30,6 +30,34 @@ if (process.env.NODE_ENV !== 'production') {
 
 bot.use(session.middleware())
 
+// Update admins and info every 30 minutes
+bot.use((ctx, next) => {
+    if (ctx.chat.type === 'private') {
+        return next()
+    }
+    const elapsed = moment
+        .duration(moment().diff(ctx.session.lastUpdate)).asMinutes()
+
+    if (typeof ctx.session.lastUpdate === 'undefined' || elapsed > 30) {
+        // Fetch again
+        ctx.session.name = ctx.chat.title
+        ctx.session.id = ctx.chat.id
+        ctx.session.banned = ctx.session.banned || []
+        return ctx.getChatAdministrators().then(admins => {
+            ctx.session.admins = admins
+                .filter(admin => admin.user.is_bot === false)
+                .map(admin => admin.user.id)
+
+            ctx.session.lastUpdate = moment()
+            return next(ctx)
+        }).catch(err => {
+            winston.error(err.message || err)
+            return next(ctx)
+        })
+    }
+    return next(ctx)
+})
+
 bot.start(ctx => {
     if (ctx.message.chat.type !== 'private') {
         return
@@ -63,7 +91,9 @@ For example, you want to set this number to 5:
 })
 
 const tellAdmins = (ctx, message) => {
-    winston.debug('[tellAdmins]', message)
+    if (typeof ctx.getChatAdministrators !== 'function') {
+        return winston.error('tellAdmins() called from the context of a non group')
+    }
     ctx.getChatAdministrators().then(admins => {
         admins.filter(admin => admin.user.is_bot === false).forEach(admin => {
             try {
@@ -75,99 +105,214 @@ const tellAdmins = (ctx, message) => {
     })
 }
 
-bot.on('message', ctx => {
-    winston.debug(`[incoming.message] -------
-User: ${ctx.from.username || ctx.from.first_name}
-Chat: ${ctx.chat.title}
-Text: ${ctx.message.text}
-Muted: ${ctx.session.muted}
-Raw: ${JSON.stringify(ctx.message)}
----------------------------------
-`)
-    if (typeof ctx.message.text !== 'undefined' && ctx.message.text.indexOf('/config') === 0) {
-        return ctx.getChatAdministrators().then(admins => {
-            if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) === -1) {
-                winston.warn('regular user wants to config the bot')
-                return tellAdmins(ctx, `User ${ctx.from.username} (id ${ctx.from.id}), which is not an admin, just attempted to handle the configuration of the bot. Here's the full text:\n"${ctx.message.text}"`)
+const isAdmin = ctx => {
+    return (ctx.session.admins || []).indexOf(ctx.from.id) !== -1
+}
+
+const getAdminInfo = ctx => {
+    return new Promise((resolve, reject) => {
+        session.client.keys('*', (err, keys) => {
+            if (err) {
+                return reject(err.message || err)
             }
-            winston.debug('[config] command is called from an admin')
-            if (typeof ctx.session.configBeforeBanned === 'undefined') {
-                ctx.session.configBeforeBanned = defaults.SESSION.configBeforeBanned
-            }
-            if (typeof ctx.session.configBeforeKicked === 'undefined') {
-                ctx.session.configBeforeKicked = defaults.SESSION.configBeforeKicked
-            }
-            if (typeof ctx.session.configKickForMinutes === 'undefined') {
-                ctx.session.configKickForMinutes = defaults.SESSION.configKickForMinutes
-            }
-            const command = parseCommand(ctx.message.text)
-            winston.debug('[config] command is', command)
-            if (command && command.command === 'config-set-kick-after') {
-                ctx.session.configBeforeKicked = command.argument
-                winston.debug(`[config] ${ctx.from.username} is setting configBeforeKicked to ${command.argument} in group ${ctx.chat.title}`)
-                tellAdmins(ctx, `Configuration for ${ctx.chat.title} has changed: users will be kicked after ${command.argument} violations.`)
-            } else if (command && command.command === 'config-set-ban-after') {
-                winston.debug(`[config] ${ctx.from.username} is setting configBeforeBanned to ${command.argument} in group ${ctx.chat.title}`)
-                ctx.session.configBeforeBanned = command.argument
-                tellAdmins(ctx, `Configuration for ${ctx.chat.title} has changed: users will be banned after ${command.argument} violations.`)
-            } else if (command && command.command === 'config-get') {
-                ctx.telegram.sendMessage(ctx.from.id,
+            Promise.all(keys.map(key => {
+                return new Promise((resolve, reject) => {
+                    session.client.get(key, (err, value) => {
+                        if (err) {
+                            return reject(err.message || err)
+                        }
+                        try {
+                            const json = JSON.parse(value)
+                            resolve(json)
+                        } catch (ex) {
+                            resolve({})
+                        }
+                    })
+                })
+            })).then(values => {
+                const map = values.filter(s => {
+                    if (typeof s.admins === 'undefined' || !s.admins.length) {
+                        return false
+                    }
+                    if (s.admins.indexOf(ctx.from.id) === -1) {
+                        return false
+                    }
+                    return true
+                }).map(s => {
+                    return {
+                        name: s.name,
+                        id: s.id,
+                        banned: s.banned || []
+                    }
+                })
+                resolve(map)
+            })
+        })
+    })
+}
+
+bot.command('config', ctx => {
+    if (!isAdmin(ctx)) {
+        return tellAdmins(`User ${ctx.from.username} (id ${ctx.from.id}), which is not an admin, just attempted to handle the configuration of the bot. Here's the full text:\n"${ctx.message.text}"`)
+    }
+    if (ctx.chat.type === 'private') {
+        return
+    }
+    winston.debug('[config] command is called from an admin')
+    if (typeof ctx.session.configBeforeBanned === 'undefined') {
+        ctx.session.configBeforeBanned = defaults.SESSION.configBeforeBanned
+    }
+    if (typeof ctx.session.configBeforeKicked === 'undefined') {
+        ctx.session.configBeforeKicked = defaults.SESSION.configBeforeKicked
+    }
+    if (typeof ctx.session.configKickForMinutes === 'undefined') {
+        ctx.session.configKickForMinutes = defaults.SESSION.configKickForMinutes
+    }
+    const command = parseCommand(ctx.message.text)
+    winston.debug('[config] command is', command)
+    if (command && command.command === 'config-set-kick-after') {
+        ctx.session.configBeforeKicked = command.argument
+        winston.debug(`[config] ${ctx.from.username} is setting configBeforeKicked to ${command.argument} in group ${ctx.chat.title}`)
+        tellAdmins(ctx, `Configuration for ${ctx.chat.title} has changed: users will be kicked after ${command.argument} violations.`)
+    } else if (command && command.command === 'config-set-ban-after') {
+        winston.debug(`[config] ${ctx.from.username} is setting configBeforeBanned to ${command.argument} in group ${ctx.chat.title}`)
+        ctx.session.configBeforeBanned = command.argument
+        tellAdmins(ctx, `Configuration for ${ctx.chat.title} has changed: users will be banned after ${command.argument} violations.`)
+    } else if (command && command.command === 'config-get') {
+        ctx.telegram.sendMessage(ctx.from.id,
 `Here's the current configuration for group "${ctx.chat.title}":
 - Kick after ${ctx.session.configBeforeKicked} violations
 - Ban after ${ctx.session.configBeforeBanned} violations
 - Kick users for ${ctx.session.configKickForMinutes} minutes.
 
 Type /start to get information about how to change these settings.`)
-            } else {
-                winston.warn('unknown command, message was', ctx.message.text)
-            }
-        }).catch(err => {
-            winston.error(err)
-        })
-    } else if (typeof ctx.message.text !== 'undefined' && ctx.message.text.indexOf('/mute') === 0) {
-        winston.debug(`[mute command] ${ctx.from.username} is setting the group ${ctx.chat.title} to mute`)
-        return ctx.getChatAdministrators().then(admins => {
-            if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) === -1) {
-                winston.warn('regular user wants to mute the group')
-                return tellAdmins(ctx, `User ${ctx.from.username} (id ${ctx.from.id}), which is not an admin, just attempted to mute the group ${ctx.chat.title}`)
-            }
-            winston.debug(`[mute command] ${ctx.from.username} just setted the group ${ctx.chat.title} to mute`)
-            tellAdmins(ctx, `${ctx.from.username} just muted the group ${ctx.chat.title}`)
-            ctx.session.muted = true
-        })
-    } else if (typeof ctx.message.text !== 'undefined' && ctx.message.text.indexOf('/unmute') === 0) {
-        winston.debug(`[unmute command] ${ctx.from.username} is setting the group ${ctx.chat.title} to unmute`)
-        return ctx.getChatAdministrators().then(admins => {
-            if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) === -1) {
-                winston.warn('regular user wants to unmute the group')
-                return tellAdmins(ctx, `User ${ctx.from.username} (id ${ctx.from.id}), which is not an admin, just attempted to unmute the group ${ctx.chat.title}`)
-            }
-            winston.debug(`[unmute command] ${ctx.from.username} just setted the group ${ctx.chat.title} to unmute`)
-            tellAdmins(ctx, `${ctx.from.username} just unmuted ${ctx.chat.title}`)
-            ctx.session.muted = false
-        })
+    } else {
+        winston.warn('unknown command, message was', ctx.message.text)
     }
-    if (ctx.session.muted === true) {
-        winston.debug('[session.muted] session is muted')
-        return ctx.getChatAdministrators().then(admins => {
-            winston.debug('[debug.admins]:', admins.map(admin => admin.user.id).join(','))
-            if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) !== -1) {
-                // Mods are allowed to chat
-                winston.debug('[session.muted] admins are allowed to talk')
-                return
-            }
-            winston.debug('[session.muted] about to delete message', ctx.message.text)
-            ctx.deleteMessage(ctx.message.id).then(() => {
-                winston.info('group muted, message deleted', ctx.message.text)
-            }).catch(err => {
-                tellAdmins(ctx, `I tried to delete a message from the group ${ctx.chat.title}, but the operation failed with this error: ${err}`)
-                winston.error('unable to delete message from muted group')
-            })
-        }).catch(ex => {
-            winston.warn('exception caught', ex)
-        })
-    }
+})
 
+bot.command('unban', ctx => {
+    if (ctx.chat.type !== 'private') {
+        ctx.telegram.sendMessage(ctx.from.id, 'The /unban command must be run in our private conversation. Please run the command here again.')
+        return
+    }
+    // Parse command
+    let user, group
+    let parts = ctx.message.text.split(/\/unban|from/gi).map(w => w.trim().toLowerCase()).filter(w => w.length)
+    winston.debug('/unban, parts detected:', parts)
+    if (parts.length < 2) {
+        winston.warn('unable to understand this message:', ctx.message.text)
+        return ctx.reply('Sorry, I could not understand your message.')
+    }
+    user = parts[0]
+    group = parts[1]
+    // Find the user in the group
+    getAdminInfo(ctx).then(info => {
+        // Group exists?
+        const groupFound = info.find(g => {
+            return g.name.toLowerCase().trim() === group
+        })
+        if (typeof groupFound === 'undefined') {
+            return ctx.reply('I could not find the group ' + group)
+        }
+        const userFound = groupFound.banned.find(u => {
+            return u.username.toLowerCase().trim() === user
+        })
+        if (typeof userFound === 'undefined') {
+            return ctx.reply('I could not find the user ' + user)
+        }
+        ctx.telegram.unbanChatMember(groupFound.id, userFound.id).then(() => {
+            winston.debug('unbanning ' + user)
+            ctx.reply('@' + user + ' should be unbanned now.')
+        }).catch(err => {
+            winston.error(err.message || err)
+            ctx.reply(`There has been an error: ${err.message || err}`)
+        })
+    }).catch(err => {
+        return ctx.reply(`Sorry, there has been an error: ${err}`)
+    })
+})
+
+bot.command('debug', ctx => {
+    ctx.session.banned = ctx.session.banned || []
+    ctx.session.banned.push({
+        id: 1,
+        username: 'andrea'
+    })
+    ctx.reply(`banned users are: ${ctx.session.banned.map(u => u.username)}`)
+})
+
+bot.command('listBanned', ctx => {
+    if (ctx.chat.type !== 'private') {
+        ctx.telegram.sendMessage(ctx.from.id, 'The /listBanned command must be run in our private conversation. Please run the command here again.')
+        return
+    }
+    getAdminInfo(ctx).then(info => {
+        if (info.filter(g => g.banned).length === 0) {
+            return ctx.reply('At the moment there is no user banned by me.')
+        }
+        ctx.replyWithMarkdown(`This is the list of currently banned users per group:
+${info.filter(g => g.banned.length > 0).map(group => {
+    return `*${group.name}*:
+    ${group.banned.map(u => {
+        return `${u.username}`
+    }).join('\n')}
+
+To unban a specific user run the following command:
+\`\`\`
+/unban __username__ from __groupname__
+\`\`\`
+For example:
+\`\`\`
+/unban j.doe85 from Blockchain Tips And Tricks
+\`\`\`
+
+`
+}).join('\n')}
+`)
+    })
+})
+
+bot.command('mute', ctx => {
+    if (!isAdmin(ctx)) {
+        return tellAdmins(ctx, `${ctx.from.username}, which is not an administrator, attempted to mute ${ctx.chat.title}`)
+    }
+    winston.debug('/mute called')
+    if (ctx.session.muted === false) {
+        tellAdmins(ctx, `${ctx.from.username} just muted ${ctx.chat.title}`)
+    }
+})
+
+bot.command('unmute', ctx => {
+    if (!isAdmin(ctx)) {
+        return tellAdmins(ctx, `${ctx.from.username}, which is not an administrator, attempted to unmute ${ctx.chat.title}`)
+    }
+    winston.debug('/unmute called')
+    if (ctx.session.muted === false) {
+        tellAdmins(ctx, `${ctx.from.username} just unmuted ${ctx.chat.title}`)
+    }
+})
+
+bot.on('message', ctx => {
+    winston.debug(`[incoming.message] -------
+    User: ${ctx.from.username || ctx.from.first_name}
+    Chat: ${ctx.chat.title}
+    Text: ${ctx.message.text}
+    Muted: ${ctx.session.muted}
+    Raw: ${JSON.stringify(ctx.message)}
+    ---------------------------------
+    `)
+    if (isAdmin(ctx)) {
+        // Admins can talk
+        return
+    }
+    if (ctx.session.muted) {
+        return ctx.deleteMessage(ctx.message.id).then(() => {
+            winston.debug('message was deleted')
+        }).catch(err => {
+            winston.error(err.message || err)
+        })
+    }
     let violation
     if (containsEthAddress(ctx.message)) {
         violation = 'ETH addresses'
@@ -183,60 +328,55 @@ Type /start to get information about how to change these settings.`)
         violation = 'GIFs'
     } else {
         // No violation detected
-        winston.debug(`[violations] no violations found for message: ${ctx.message}`)
+        winston.debug(`[violations] no violations found for message: ${ctx.message.text || JSON.stringify(ctx.message)}`)
         return
     }
-    winston.debug(`[violations] found "${violation}" violation for: ${ctx.message}`)
-    ctx.getChatAdministrators().then(admins => {
-        if (admins.map(admin => admin.user.id).indexOf(ctx.from.id) !== -1) {
-            return winston.debug('admins can post anything they want')
-        }
-        // Delete message...
-        ctx.deleteMessage(ctx.message.message_id).then(() => {
-            winston.debug('[violations] deleting the message')
-            winston.info('deleted offending message')
-            ctx.reply(`Sorry @${ctx.from.username}, posting ${violation} is not allowed here, your message has been deleted.`)
-        }).catch(err => {
-            tellAdmins(ctx, `I tried to delete the following message from ${ctx.from.username} (id: ${ctx.from.id}) from ${ctx.chat.title}:\n"${ctx.message.text}"\nbecause it violated the "no ${violation}" rule, but I was not able to do it. Reason:\n${err}`)
-            winston.error(err)
-        })
-        // ...Meanwhile check if they should be kicked or banned
-        if (typeof ctx.session.violations === 'undefined') {
-            ctx.session.violations = {}
-            ctx.session.violations[ctx.from.id] = 0
-        }
-        if (typeof ctx.session.configBeforeBanned === 'undefined') {
-            ctx.session.configBeforeBanned = defaults.SESSION.configBeforeBanned
-        }
-        if (typeof ctx.session.configBeforeKicked === 'undefined') {
-            ctx.session.configBeforeKicked = defaults.SESSION.configBeforeKicked
-        }
-        if (typeof ctx.session.configKickForMinutes === 'undefined') {
-            ctx.session.configKickForMinutes = defaults.SESSION.configKickForMinutes
-        }
-        // Count violations
-        ctx.session.violations[ctx.from.id]++
-        winston.debug(`[violations] user ${ctx.from.username} (${ctx.from.id}) has done ${ctx.session.violations[ctx.from.id]} violations in ${ctx.chat.title}`)
-        if (ctx.session.violations[ctx.from.id] > ctx.session.configBeforeBanned) {
-            // They should be banned
-            winston.debug(`[violations] banning user ${ctx.from.username} (${ctx.from.id})`)
-            ctx.kickChatMember(ctx.from.id, moment.now().unix()).then().catch(err => {
-                tellAdmins(ctx, `I tried to ban ${ctx.from.username} (id: ${ctx.from.id}) from ${ctx.chat.title} because they posted ${violation} more than ${ctx.session.configBeforeBanned} times, but I was not able to do it because:\n${err}`)
-                winston.error(err)
-            })
-        } else if (ctx.session.violations[ctx.from.id] > ctx.session.configBeforeKicked) {
-            // They should be kicked
-            winston.debug(`[violations] kicking user ${ctx.from.username} (${ctx.from.id})`)
-            ctx.kickChatMember(ctx.from.id,
-                    moment.now().add(ctx.session.configKickForMinutes, 'minutes').unix()
-            ).then().catch(err => {
-                tellAdmins(ctx, `I tried to kick ${ctx.from.username} (id: ${ctx.from.id}) from ${ctx.chat.title} for ${ctx.session.configKickForMinutes} minutes because they posted ${violation} more than ${ctx.session.configBeforeKicked} times, but I was not able to do it because:\n${err}`)
-                winston.error(err)
-            })
-        }
+    ctx.deleteMessage(ctx.message.message_id).then(() => {
+        winston.debug('[violations] deleting the message')
+        winston.info('deleted offending message')
+        ctx.reply(`Sorry @${ctx.from.username}, posting ${violation} is not allowed here, your message has been deleted.`)
     }).catch(err => {
+        tellAdmins(ctx, `I tried to delete the following message from ${ctx.from.username} (id: ${ctx.from.id}) from ${ctx.chat.title}:\n"${ctx.message.text}"\nbecause it violated the "no ${violation}" rule, but I was not able to do it. Reason:\n${err}`)
         winston.error(err)
     })
+    // ...Meanwhile check if they should be kicked or banned
+    if (typeof ctx.session.violations === 'undefined') {
+        ctx.session.violations = {}
+        ctx.session.violations[ctx.from.id] = 0
+    }
+    if (typeof ctx.session.configBeforeBanned === 'undefined') {
+        ctx.session.configBeforeBanned = defaults.SESSION.configBeforeBanned
+    }
+    if (typeof ctx.session.configBeforeKicked === 'undefined') {
+        ctx.session.configBeforeKicked = defaults.SESSION.configBeforeKicked
+    }
+    if (typeof ctx.session.configKickForMinutes === 'undefined') {
+        ctx.session.configKickForMinutes = defaults.SESSION.configKickForMinutes
+    }
+    // Count violations
+    ctx.session.violations[ctx.from.id]++
+    winston.debug(`[violations] user ${ctx.from.username} (${ctx.from.id}) has done ${ctx.session.violations[ctx.from.id]} violations in ${ctx.chat.title}`)
+    if (ctx.session.violations[ctx.from.id] > ctx.session.configBeforeBanned) {
+        // They should be banned
+        winston.debug(`[violations] banning user ${ctx.from.username} (${ctx.from.id})`)
+        const forever = moment().add(2, 'year').unix()
+        ctx.kickChatMember(ctx.from.id, forever).then(() => {
+            ctx.session.banned = ctx.session.banned || []
+            ctx.session.banned.push(ctx.from)
+        }).catch(err => {
+            tellAdmins(ctx, `I tried to ban ${ctx.from.username} (id: ${ctx.from.id}) from ${ctx.chat.title} because they posted ${violation} more than ${ctx.session.configBeforeBanned} times, but I was not able to do it because:\n${err}`)
+            winston.error(err)
+        })
+    } else if (ctx.session.violations[ctx.from.id] > ctx.session.configBeforeKicked) {
+        // They should be kicked
+        winston.debug(`[violations] kicking user ${ctx.from.username} (${ctx.from.id})`)
+        ctx.kickChatMember(ctx.from.id,
+                moment().add(ctx.session.configKickForMinutes, 'minutes').unix()
+        ).then().catch(err => {
+            tellAdmins(ctx, `I tried to kick ${ctx.from.username} (id: ${ctx.from.id}) from ${ctx.chat.title} for ${ctx.session.configKickForMinutes} minutes because they posted ${violation} more than ${ctx.session.configBeforeKicked} times, but I was not able to do it because:\n${err}`)
+            winston.error(err)
+        })
+    }
 })
 
 bot.startPolling()

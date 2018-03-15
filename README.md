@@ -26,6 +26,8 @@ The bot is also capable of muting groups, that is, any message will be deleted w
 | `/config set ban after {insert number} violations` | Set the number of allowed violations before banning the user |
 | `/mute` | Mute the group |
 | `/unmute` | Unmute the group |
+| `/listBanned` | Get the list of users banned by the bot |
+| `/unban {insert user} from {insert group}` | Unban the user from that group|
 
 
 Note that any attempt from a regular user to invoke Bot's command will be reported to admins by the bot itself.

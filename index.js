@@ -87,6 +87,30 @@ For example, you want to set this number to 5:
 \`\`\`
 /unmute
 \`\`\`
+
+*Unbanning users*
+
+It is possible to unban users previously banned by the bot. The following two
+commands are only available in this private chat.
+
+1. Get the list of banned users in the groups you are an administrator.
+
+\`\`\`
+/listBanned
+\`\`\`
+
+2. Unban users. Usage
+
+\`\`\`
+/unban __user__ from __group__
+\`\`\`
+
+For example:
+
+\`\`\`
+/unban j.doe85 from Blockchain Tips And Tricks
+\`\`\`
+
     `)
 })
 

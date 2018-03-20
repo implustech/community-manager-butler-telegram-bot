@@ -355,10 +355,10 @@ bot.on('message', ctx => {
         winston.debug(`[violations] no violations found for message: ${ctx.message.text || JSON.stringify(ctx.message)}`)
         return
     }
-    ctx.deleteMessage(ctx.message.message_id).then(() => {
-        winston.debug('[violations] deleting the message')
-        winston.info('deleted offending message')
-        ctx.reply(`Sorry @${ctx.from.username}, posting ${violation} is not allowed here, your message has been deleted.`)
+    winston.debug('[violations] deleting the message')
+    ctx.deleteMessage(ctx.message.message_id).then(result => {
+        winston.info('deleted offending message, result:', result)
+        ctx.reply(`Sorry @${ctx.from.username || ctx.from.first_name}, posting ${violation} is not allowed here, your message has been deleted.`)
     }).catch(err => {
         tellAdmins(ctx, `I tried to delete the following message from ${ctx.from.username} (id: ${ctx.from.id}) from ${ctx.chat.title}:\n"${ctx.message.text}"\nbecause it violated the "no ${violation}" rule, but I was not able to do it. Reason:\n${err}`)
         winston.error(err)

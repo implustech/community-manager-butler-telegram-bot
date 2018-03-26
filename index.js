@@ -367,6 +367,8 @@ bot.on('message', ctx => {
     if (typeof ctx.session.violations === 'undefined') {
         ctx.session.violations = {}
         ctx.session.violations[ctx.from.id] = 0
+    } else if (typeof ctx.session.violations[ctx.from.id] === 'undefined') {
+        ctx.session.violations[ctx.from.id] =  0
     }
     if (typeof ctx.session.configBeforeBanned === 'undefined') {
         ctx.session.configBeforeBanned = defaults.SESSION.configBeforeBanned

@@ -332,6 +332,10 @@ bot.on('message', ctx => {
         return
     }
     if (typeof ctx.session.muted === 'undefined' || ctx.session.muted) {
+        // PATCH: Do not delete messages that are older than this patch
+        if (Math.round(new Date().getTime() / 1000) < 1525884606) {
+            return
+        }
         return ctx.deleteMessage(ctx.message.id).then(() => {
             winston.debug('message was deleted')
         }).catch(err => {

@@ -318,6 +318,7 @@ bot.command('unmute', ctx => {
 })
 
 bot.on('message', ctx => {
+
     winston.debug(`[incoming.message] -------
     User: ${ctx.from.username || ctx.from.first_name}
     Chat: ${ctx.chat.title}
@@ -327,10 +328,10 @@ bot.on('message', ctx => {
     ---------------------------------
     `)
     if (isAdmin(ctx)) {
-        // Admins can talk
+        // Admins can always talk
         return
     }
-    if (ctx.session.muted) {
+    if (typeof ctx.session.muted === 'undefined' || ctx.session.muted) {
         return ctx.deleteMessage(ctx.message.id).then(() => {
             winston.debug('message was deleted')
         }).catch(err => {

@@ -177,6 +177,11 @@ const getAdminInfo = ctx => {
 
 bot.command('config', ctx => {
     if (!isAdmin(ctx)) {
+        ctx.deleteMessage(ctx.message.id).then(() => {
+            winston.debug(`message containing a command was deleted. raw: ${JSON.stringify(ctx.message)}`)
+        }).catch(err => {
+            winston.error(err.message || err)
+        })
         return tellAdmins(`User ${ctx.from.username} (id ${ctx.from.id}), which is not an admin, just attempted to handle the configuration of the bot. Here's the full text:\n"${ctx.message.text}"`)
     }
     if (ctx.chat.type === 'private') {
@@ -299,6 +304,11 @@ For example:
 
 bot.command('mute', ctx => {
     if (!isAdmin(ctx)) {
+        ctx.deleteMessage(ctx.message.id).then(() => {
+            winston.debug(`message containing a command was deleted. raw: ${JSON.stringify(ctx.message)}`)
+        }).catch(err => {
+            winston.error(err.message || err)
+        })
         return tellAdmins(ctx, `${ctx.from.username}, which is not an administrator, attempted to mute ${ctx.chat.title}`)
     }
     winston.debug('/mute called')
@@ -310,6 +320,11 @@ bot.command('mute', ctx => {
 
 bot.command('unmute', ctx => {
     if (!isAdmin(ctx)) {
+        ctx.deleteMessage(ctx.message.id).then(() => {
+            winston.debug(`message containing a command was deleted. raw: ${JSON.stringify(ctx.message)}`)
+        }).catch(err => {
+            winston.error(err.message || err)
+        })
         return tellAdmins(ctx, `${ctx.from.username}, which is not an administrator, attempted to unmute ${ctx.chat.title}`)
     }
     winston.debug('/unmute called')

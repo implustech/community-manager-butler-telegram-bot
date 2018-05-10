@@ -34,3 +34,7 @@ module.exports.containsGif = (message) => {
     }
     return mimes.indexOf(message.document.mime_type) !== -1
 }
+
+module.exports.containsForwardedMessage = (message) => {
+    return typeof message.forward_from !== 'undefined'
+}

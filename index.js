@@ -5,7 +5,7 @@ const Telegraf = require('telegraf')
 const RedisSession = require('telegraf-session-redis')
 const { parseCommand } = require('./commands')
 const { containsEmail, containsEthAddress, containsGif, containsImage,
-    containsSticker, containsUrl
+    containsSticker, containsUrl, containsForwardedMessage
 } = require('./detection')
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || defaults.TELEGRAM_TOKEN
@@ -368,6 +368,8 @@ bot.on('message', ctx => {
         violation = 'email addresses'
     } else if (containsGif(ctx.message)) {
         violation = 'GIFs'
+    } else if (containsForwardedMessage(ctx.message)) {
+        violation = 'forwarded messages'
     } else {
         // No violation detected
         winston.debug(`[violations] no violations found for message: ${ctx.message.text || JSON.stringify(ctx.message)}`)

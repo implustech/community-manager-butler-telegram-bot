@@ -305,6 +305,7 @@ bot.command('mute', ctx => {
     if (ctx.session.muted === false) {
         tellAdmins(ctx, `${ctx.from.username} just muted ${ctx.chat.title}`)
     }
+    ctx.session.muted = true
 })
 
 bot.command('unmute', ctx => {
@@ -315,6 +316,7 @@ bot.command('unmute', ctx => {
     if (ctx.session.muted === false) {
         tellAdmins(ctx, `${ctx.from.username} just unmuted ${ctx.chat.title}`)
     }
+    ctx.session.muted = false
 })
 
 bot.on('message', ctx => {

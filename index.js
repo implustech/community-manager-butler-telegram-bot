@@ -331,11 +331,7 @@ bot.on('message', ctx => {
         // Admins can always talk
         return
     }
-    if (typeof ctx.session.muted === 'undefined' || ctx.session.muted) {
-        // PATCH: Do not delete messages that are older than this patch
-        if (Math.round(new Date().getTime() / 1000) < 1525884606) {
-            return
-        }
+    if (ctx.session.muted) {
         return ctx.deleteMessage(ctx.message.id).then(() => {
             winston.debug('message was deleted')
         }).catch(err => {
